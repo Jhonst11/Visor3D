@@ -1,20 +1,23 @@
-# 🛰️ Visor 360° de Panorámicas de Dron RTK
+# 🛰️ DronePano Studio - Visor y Gestor 360° de Dron RTK
 
-Aplicación web interactiva para visualizar y geoposicionar fotografías panorámicas 360° tomadas desde drones (con metadatos RTK).
+Aplicación web interactiva para gestionar, geoposicionar y explorar fotografías panorámicas 360° tomadas desde drones (con metadatos RTK de alta precisión).
 
 ## 🚀 Características
-- **Vista 360° Fluida (WebGL / Pannellum)** con soporte de campo visual gran angular 0.5x (125° HFOV) y zoom extendido.
-- **Burbujas Flotantes 3D Interactivas:** Cada punto de toma muestra una vista previa esférica en miniatura con el número y la distancia en metros, calculados automáticamente mediante fórmulas geodésicas (Haversine y Rumbo Azimutal).
-- **Filtro Rápido:** Alterna entre ver todas las tomas del proyecto o únicamente las cercanas (< 130 m).
-- **Mapa Satelital en Tiempo Real (Leaflet + Esri World Imagery):** Incluye pines georreferenciados, línea de trayectoria de vuelo y un radar / cono de visión dinámico que rota en vivo según hacia dónde mire la cámara 360°.
-- **Telemetría RTK en Vivo:** Altitud MSL, altitud relativa de vuelo, latitud, longitud y rumbo cardinal.
-- **Acceso Rápido:** Carrusel inferior interactivo y controles de pantalla completa y división de vista (50% mapa / 50% visor 360°).
+- **Gestor de Proyectos (Dashboard):** Vista principal para administrar múltiples levantamientos aéreos y crear nuevos proyectos.
+- **Creación de Proyectos en el Navegador:** Arrastra y suelta tus fotografías panorámicas 360° (JPG); la aplicación lee automáticamente las coordenadas GPS y altitud RTK mediante `exifr` y permite nombrar el proyecto y personalizar cada toma.
+- **Exportador Individual (Compartir Proyecto):** Genera y descarga un archivo `.zip` autónomo y listo para usar con el proyecto seleccionado, sin revelar ni incluir los demás proyectos.
+- **Vista 360° Fluida (WebGL / Pannellum):** Soporte de gran angular 0.5x (125° HFOV), zoom normal 1.0x y giro automático.
+- **Menú de Opciones Compacto (☰):** Menú desplegable vertical hacia abajo que mantiene la brújula central y la rosa de los vientos totalmente despejadas.
+- **Burbujas Flotantes 3D Interactivas:** Cada punto de toma muestra una esfera miniatura con previsualización, número y distancia métrica geodésica.
+- **Filtro de Burbujas:** Alterna al instante entre ver todas las tomas o solo las cercanas.
+- **Vista Aérea Satelital (Leaflet + Esri World Imagery):** Minimapa con pines georreferenciados, ruta de vuelo y cono de radar dinámico en tiempo real sincronizado con el giro de la cámara.
+- **Modo Dividido (Split-View):** Visualización lado a lado 50% mapa / 50% visor 360°.
 
 ## 💻 Uso Local
 1. Haz doble clic en `Iniciar_Visor_360.bat`.
-2. Se abrirá automáticamente en tu navegador web en `http://localhost:8080/`.
+2. Se iniciará el servidor local y abrirá la plataforma en tu navegador.
 
 ## 🌐 Publicación en GitHub Pages
 1. Ve a **Settings** > **Pages** en tu repositorio de GitHub.
-2. En **Branch**, selecciona `main` y guarda (`/root`).
-3. En unos segundos tu visor 360° estará disponible públicamente en internet.
+2. En **Branch**, selecciona `main` y la carpeta `/ (root)`.
+3. Tu visor estará disponible públicamente en internet a través de GitHub Pages.

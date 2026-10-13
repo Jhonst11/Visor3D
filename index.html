@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Visor 360° Dron RTK - Geoposicionamiento Interactivo</title>
+  <title>DronePano Studio - Gestor y Visor 360° de Proyectos Dron RTK</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -12,7 +12,12 @@
   <!-- Google Fonts Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Helper Libraries: EXIF parser, JSZip, FileSaver -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
   <style>
     * {
@@ -26,15 +31,515 @@
       height: 100%;
       overflow: hidden;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #0b0f19;
+      background: #090d16;
+      color: #f8fafc;
+    }
+
+    /* =========================================================
+       1. PANTALLA DE INICIO (DASHBOARD DE PROYECTOS)
+       ========================================================= */
+    #dashboard-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 100;
+      background: radial-gradient(circle at 50% 10%, #172554 0%, #090d16 65%);
+      overflow-y: auto;
+      padding: 40px 32px 80px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+    }
+
+    #dashboard-screen.hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .dashboard-header {
+      width: 100%;
+      max-width: 1160px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 36px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .brand-icon {
+      width: 52px;
+      height: 52px;
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      box-shadow: 0 0 24px rgba(56, 189, 248, 0.4);
+    }
+
+    .brand-title h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to right, #ffffff, #93c5fd);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-title p {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    .btn-create-project {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      border: 1px solid #38bdf8;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 22px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 4px 20px rgba(2, 132, 199, 0.4);
+      transition: all 0.2s ease;
+    }
+
+    .btn-create-project:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 28px rgba(56, 189, 248, 0.6);
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+    }
+
+    .projects-grid {
+      width: 100%;
+      max-width: 1160px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 28px;
+    }
+
+    .project-card {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .project-card:hover {
+      transform: translateY(-6px);
+      border-color: #38bdf8;
+      box-shadow: 0 16px 40px rgba(56, 189, 248, 0.25);
+    }
+
+    .card-thumbnail {
+      width: 100%;
+      height: 190px;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+      background-color: #1e293b;
+    }
+
+    .card-thumbnail::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(15, 23, 42, 0.95) 0%, transparent 60%);
+    }
+
+    .card-badge {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 2;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #38bdf8;
+    }
+
+    .card-badge.default-badge {
+      color: #10b981;
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .card-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 6px;
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.4;
+      margin-bottom: 16px;
+      flex: 1;
+    }
+
+    .card-meta {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 18px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .card-meta span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-card-open {
+      flex: 1;
+      background: #0284c7;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+
+    .btn-card-open:hover {
+      background: #0369a1;
+    }
+
+    .btn-card-share {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #cbd5e1;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-card-share:hover {
+      background: #334155;
+      color: #38bdf8;
+      border-color: #38bdf8;
+    }
+
+    .btn-card-delete {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      border-radius: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-card-delete:hover {
+      background: #ef4444;
       color: #fff;
     }
 
+    /* =========================================================
+       2. MODAL PARA CREAR NUEVO PROYECTO
+       ========================================================= */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(12px);
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.25s ease;
+    }
+
+    .modal-overlay.active {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal-card {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 800px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8);
+      overflow: hidden;
+    }
+
+    .modal-header {
+      padding: 24px 28px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .btn-modal-close {
+      background: none;
+      border: none;
+      color: #94a3b8;
+      font-size: 22px;
+      cursor: pointer;
+    }
+
+    .modal-body {
+      padding: 28px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .form-group label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #cbd5e1;
+    }
+
+    .form-control {
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: border 0.2s;
+    }
+
+    .form-control:focus {
+      border-color: #38bdf8;
+    }
+
+    /* Zona de carga Drag & Drop */
+    .dropzone-area {
+      border: 2px dashed rgba(56, 189, 248, 0.4);
+      border-radius: 14px;
+      padding: 32px 20px;
+      text-align: center;
+      background: rgba(30, 41, 59, 0.4);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .dropzone-area:hover, .dropzone-area.dragover {
+      border-color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+    }
+
+    .dropzone-icon {
+      font-size: 38px;
+      margin-bottom: 10px;
+    }
+
+    .dropzone-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f1f5f9;
+    }
+
+    .dropzone-sub {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    /* Lista de fotos seleccionadas */
+    .staged-photos-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+
+    .staged-item {
+      background: #1e293b;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .staged-thumb {
+      width: 54px;
+      height: 38px;
+      border-radius: 6px;
+      background-size: cover;
+      background-position: center;
+      background-color: #0f172a;
+      flex-shrink: 0;
+    }
+
+    .staged-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .staged-name-input {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 5px 8px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      outline: none;
+    }
+
+    .staged-name-input:focus {
+      border-color: #38bdf8;
+    }
+
+    .staged-gps-tag {
+      font-size: 11px;
+      color: #10b981;
+      display: flex;
+      gap: 8px;
+    }
+
+    .staged-gps-tag.warning {
+      color: #f59e0b;
+    }
+
+    .btn-remove-staged {
+      background: none;
+      border: none;
+      color: #ef4444;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 6px;
+    }
+
+    .modal-footer {
+      padding: 18px 28px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #cbd5e1;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: #0284c7;
+      border: none;
+      color: #fff;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(2, 132, 199, 0.4);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* =========================================================
+       3. CONTENEDOR DEL VISOR 360 (VISTA DEL PROYECTO SELECCIONADO)
+       ========================================================= */
     #app-container {
-      position: relative;
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       display: flex;
+      z-index: 10;
+    }
+
+    #app-container.hidden {
+      display: none !important;
     }
 
     /* 360 Panorama Container */
@@ -85,30 +590,16 @@
       pointer-events: auto;
     }
 
-    .hud-title {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 1.2px;
-      text-transform: uppercase;
-      color: #38bdf8;
-      display: flex;
+    .hud-project-badge {
+      display: inline-flex;
       align-items: center;
       gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      color: #38bdf8;
+      text-transform: uppercase;
       margin-bottom: 4px;
-    }
-
-    .hud-title .dot {
-      width: 8px;
-      height: 8px;
-      background: #10b981;
-      border-radius: 50%;
-      box-shadow: 0 0 8px #10b981;
-      animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(1.2); }
     }
 
     .hud-pano-name {
@@ -143,55 +634,175 @@
       font-feature-settings: "tnum";
     }
 
-    /* Top Right Action Bar */
-    .hud-actions {
+    /* Menu Desplegable Hamburguesa Superior Derecho */
+    .hud-menu-wrapper {
       position: absolute;
       top: 16px;
       right: 16px;
-      z-index: 10;
-      display: flex;
-      gap: 10px;
+      z-index: 50;
     }
 
-    .btn-action {
-      background: rgba(15, 23, 42, 0.82);
-      backdrop-filter: blur(12px);
+    .btn-menu-trigger {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 12px;
+      color: #f8fafc;
+      padding: 9px 15px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      user-select: none;
+    }
+
+    .btn-menu-trigger:hover,
+    .hud-menu-wrapper.open .btn-menu-trigger {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: #38bdf8;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.35), 0 4px 20px rgba(0, 0, 0, 0.5);
+      transform: translateY(-1px);
+    }
+
+    /* Icono de 3 lineas (Hamburguesa animada) */
+    .hamburger-icon {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 18px;
+      height: 13px;
+      transition: transform 0.25s ease;
+    }
+
+    .hamburger-icon span {
+      display: block;
+      height: 2px;
+      width: 100%;
+      background: #38bdf8;
+      border-radius: 2px;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      transform-origin: center;
+    }
+
+    .hud-menu-wrapper.open .hamburger-icon span:nth-child(1) {
+      transform: translateY(5.5px) rotate(45deg);
+    }
+
+    .hud-menu-wrapper.open .hamburger-icon span:nth-child(2) {
+      opacity: 0;
+      transform: scaleX(0);
+    }
+
+    .hud-menu-wrapper.open .hamburger-icon span:nth-child(3) {
+      transform: translateY(-5.5px) rotate(-45deg);
+    }
+
+    /* Menu desplegable vertical hacia abajo */
+    .hud-menu-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: 250px;
+      background: rgba(15, 23, 42, 0.94);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 10px;
+      border-radius: 14px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-10px) scale(0.96);
+      transform-origin: top right;
+      transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .hud-menu-wrapper.open .hud-menu-dropdown {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    .menu-header {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #94a3b8;
+      padding: 8px 12px 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 4px;
+    }
+
+    .menu-divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+      margin: 4px 6px;
+    }
+
+    .menu-item {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 8px;
       color: #e2e8f0;
-      padding: 10px 14px;
+      padding: 9px 12px;
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 8px;
-      transition: all 0.2s ease;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      gap: 10px;
+      text-align: left;
+      width: 100%;
+      transition: all 0.18s ease;
     }
 
-    .btn-action:hover {
-      background: rgba(30, 41, 59, 0.95);
+    .menu-item:hover {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.3);
+      color: #38bdf8;
+      transform: translateX(3px);
+    }
+
+    .menu-item.active {
+      background: rgba(2, 132, 199, 0.25);
       border-color: #38bdf8;
-      color: #fff;
-      transform: translateY(-1px);
+      color: #38bdf8;
+      font-weight: 600;
     }
 
-    .btn-action.active {
-      background: #0284c7;
-      border-color: #38bdf8;
+    .menu-item .menu-item-icon {
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .menu-item.btn-nav-back:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.3);
       color: #fff;
     }
 
-    /* Estilo del Boton Selector de Burbujas */
-    .btn-filter-bubbles {
-      border: 1px solid #38bdf8;
-      background: rgba(2, 132, 199, 0.3);
+    .menu-item.btn-share-project {
+      color: #38bdf8;
+      font-weight: 600;
     }
-    .btn-filter-bubbles.nearby-mode {
-      border-color: #10b981;
-      background: rgba(16, 185, 129, 0.35);
-      color: #6ee7b7;
+
+    .menu-item.btn-share-project:hover {
+      background: rgba(2, 132, 199, 0.25);
     }
 
     /* Satellite Map Widget */
@@ -257,10 +868,6 @@
     #map-wrapper.minimized .map-header,
     #map-wrapper.minimized #map {
       display: none !important;
-    }
-
-    #map-wrapper.hidden {
-      display: none;
     }
 
     #map {
@@ -403,6 +1010,10 @@
 
     .thumb-meta span.name {
       font-weight: 600;
+      max-width: 120px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .thumb-meta span.sub {
@@ -446,10 +1057,7 @@
       50% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0.15), 0 4px 20px rgba(0,0,0,0.8); }
     }
 
-    /* ========================================================
-       BURBUJAS 360 INTERACTIVAS (HOTSPOTS FLOTANTES TIPO KUULA)
-       ======================================================== */
-    /* Contenedor del hotspot en Pannellum (mantiene las coordenadas 3D intactas) */
+    /* Hotspots Burbujas 360 */
     .pnlm-hotspot-base.bubble-hotspot {
       width: 56px !important;
       height: 56px !important;
@@ -468,7 +1076,6 @@
       height: 44px !important;
     }
 
-    /* Esfera visual interna (animacion de escala y hover aislada aqui) */
     .bubble-inner {
       width: 100%;
       height: 100%;
@@ -491,7 +1098,6 @@
       border-color: #60a5fa;
     }
 
-    /* Efecto al pasar el cursor (Hover) en la burbuja interna */
     .bubble-inner:hover {
       transform: scale(1.3) translateY(-2px);
       border-color: #10b981;
@@ -499,7 +1105,6 @@
       opacity: 1;
     }
 
-    /* Etiqueta flotante inferior pegada a la burbuja */
     .bubble-badge-label {
       background: rgba(15, 23, 42, 0.92);
       backdrop-filter: blur(6px);
@@ -528,7 +1133,6 @@
       opacity: 0.85;
     }
 
-    /* Compass Rose Indicator */
     .compass-hud {
       position: absolute;
       top: 16px;
@@ -560,17 +1164,82 @@
 </head>
 <body>
 
-  <div id="app-container">
+  <!-- =========================================================
+       1. DASHBOARD DE PROYECTOS (PORTAL PRINCIPAL)
+       ========================================================= -->
+  <div id="dashboard-screen">
+    <div class="dashboard-header">
+      <div class="brand-group">
+        <div class="brand-icon">🛰️</div>
+        <div class="brand-title">
+          <h1>DronePano Studio</h1>
+          <p>Gestor y Visor de Panorámicas 360° Georreferenciadas con Dron</p>
+        </div>
+      </div>
+      <button class="btn-create-project" id="btn-open-create-modal">
+        <span>➕ Crear Nuevo Proyecto</span>
+      </button>
+    </div>
+
+    <!-- Lista de tarjetas de proyectos -->
+    <div class="projects-grid" id="projects-container"></div>
+  </div>
+
+  <!-- =========================================================
+       2. MODAL PARA CREAR NUEVO PROYECTO
+       ========================================================= -->
+  <div class="modal-overlay" id="modal-create-project">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Nuevo Proyecto de Panorámicas 360°</h2>
+        <button class="btn-modal-close" id="btn-close-modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="project-name-input">Nombre del Proyecto *</label>
+          <input type="text" id="project-name-input" class="form-control" placeholder="Ej: Inspección Lote Campestre Norte" />
+        </div>
+        <div class="form-group">
+          <label for="project-desc-input">Descripción / Notas (Opcional)</label>
+          <input type="text" id="project-desc-input" class="form-control" placeholder="Ej: Levantamiento topográfico con Dron RTK" />
+        </div>
+
+        <div class="form-group">
+          <label>Fotos Panorámicas 360° (Equirrectangulares 2:1)</label>
+          <div class="dropzone-area" id="dropzone-area">
+            <div class="dropzone-icon">📷</div>
+            <div class="dropzone-title">Arrastra tus fotos 360° aquí o haz clic para seleccionarlas</div>
+            <div class="dropzone-sub">Formato JPG / JPEG. Las coordenadas GPS y altitud RTK se leerán automáticamente.</div>
+            <input type="file" id="file-input" multiple accept="image/jpeg,image/jpg" style="display: none;" />
+          </div>
+        </div>
+
+        <!-- Lista de fotos cargadas con nombres editables -->
+        <div class="form-group" id="staged-photos-container" style="display: none;">
+          <label>Fotos Cargadas (<span id="staged-count">0</span>) - Personaliza los nombres:</label>
+          <div class="staged-photos-list" id="staged-photos-list"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btn-cancel-create">Cancelar</button>
+        <button class="btn-primary" id="btn-save-project" disabled>
+          <span>💾 Guardar y Abrir Tour</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================================================
+       3. VISOR 360° (PANTALLA DEL TOUR)
+       ========================================================= -->
+  <div id="app-container" class="hidden">
     <!-- Visor 360 Pannellum -->
     <div id="panorama"></div>
 
     <!-- HUD Telemetria Superior Izquierda -->
     <div class="hud-top">
       <div class="glass-card">
-        <div class="hud-title">
-          <span class="dot"></span>
-          <span>Inspección Aérea RTK • Dron 360°</span>
-        </div>
+        <div class="hud-project-badge" id="hud-project-title">PROYECTO: VCL08 RTK</div>
         <div class="hud-pano-name" id="hud-name">Punto Dron #1</div>
         <div class="hud-telemetry">
           <div class="telemetry-item">
@@ -602,35 +1271,66 @@
       <span id="compass-heading">0° N</span>
     </div>
 
-    <!-- Botones de Accion Superior Derecha -->
-    <div class="hud-actions">
-      <!-- BOTON PARA ALTERNAR BURBUJAS: TODAS VS SOLO CERCANAS -->
-      <button class="btn-action btn-filter-bubbles" id="btn-toggle-bubbles" title="Alternar visibilidad de burbujas">
-        <span id="btn-bubbles-icon">🌐</span>
-        <span id="btn-bubbles-text">Burbujas: Todas</span>
+    <!-- Menú Desplegable Superior Derecho (Hamburguesa ☰) -->
+    <div class="hud-menu-wrapper" id="hud-menu-wrapper">
+      <button class="btn-menu-trigger" id="btn-menu-toggle" title="Abrir menú de opciones">
+        <span class="hamburger-icon">
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+        <span class="menu-label">Opciones</span>
       </button>
 
-      <!-- Boton de Zoom Gran Angular 0.5x -->
-      <button class="btn-action active" id="btn-zoom-ultra" title="Alejar visión a Gran Angular 0.5x">
-        <span>🔍 0.5x</span>
-      </button>
+      <div class="hud-menu-dropdown" id="hud-menu-dropdown">
+        <div class="menu-header">
+          <span>⚙️ Opciones del Visor</span>
+        </div>
 
-      <button class="btn-action" id="btn-toggle-autorotate" title="Activar/Desactivar Rotación Automática">
-        <span>🔄 Giro Auto</span>
-      </button>
-      <button class="btn-action" id="btn-toggle-split" title="Alternar Modo Dividido">
-        <span>◫ Dividir Vista</span>
-      </button>
-      <button class="btn-action" id="btn-fullscreen" title="Pantalla Completa">
-        <span>⛶ Pantalla Completa</span>
-      </button>
+        <button class="menu-item btn-nav-back" id="btn-back-to-dashboard" title="Volver al Menú Principal de Proyectos">
+          <span class="menu-item-icon">⬅</span>
+          <span class="menu-item-text">Volver a Proyectos</span>
+        </button>
+
+        <button class="menu-item btn-share-project" id="btn-share-current-project" title="Exportar y descargar este proyecto individualmente">
+          <span class="menu-item-icon">📦</span>
+          <span class="menu-item-text">Compartir Proyecto (ZIP)</span>
+        </button>
+
+        <div class="menu-divider"></div>
+
+        <button class="menu-item" id="btn-toggle-bubbles" title="Alternar visibilidad de burbujas">
+          <span class="menu-item-icon" id="btn-bubbles-icon">🌐</span>
+          <span class="menu-item-text" id="btn-bubbles-text">Burbujas: Todas</span>
+        </button>
+
+        <button class="menu-item active" id="btn-zoom-ultra" title="Alternar zoom">
+          <span class="menu-item-icon" id="btn-zoom-icon">🔍</span>
+          <span class="menu-item-text" id="btn-zoom-text">Zoom Gran Angular (0.5x)</span>
+        </button>
+
+        <button class="menu-item" id="btn-toggle-autorotate" title="Activar/Desactivar Rotación Automática">
+          <span class="menu-item-icon">🔄</span>
+          <span class="menu-item-text">Giro Automático</span>
+        </button>
+
+        <button class="menu-item" id="btn-toggle-split" title="Alternar Modo Dividido">
+          <span class="menu-item-icon">◫</span>
+          <span class="menu-item-text">Dividir Vista (Mapa 50%)</span>
+        </button>
+
+        <button class="menu-item" id="btn-fullscreen" title="Pantalla Completa">
+          <span class="menu-item-icon">⛶</span>
+          <span class="menu-item-text">Pantalla Completa</span>
+        </button>
+      </div>
     </div>
 
     <!-- Mini-Mapa Satelital Leaflet -->
-    <div id="map-wrapper" title="Mapa Satelital">
+    <div id="map-wrapper" title="Vista aérea">
       <div class="map-minimized-pill" title="Clic para abrir el Mapa">🗺️</div>
       <div class="map-header">
-        <div class="map-badge">🛰️ VISTA SATELITAL RTK</div>
+        <div class="map-badge">🛰️ Vista aérea</div>
         <div class="map-controls-bar">
           <button class="map-control-btn" id="btn-recenter-map" title="Centrar en foto activa">🎯</button>
           <button class="map-control-btn" id="btn-minimize-map" title="Minimizar mapa">✕</button>
@@ -649,19 +1349,80 @@
   <script src="panos_data.js"></script>
 
   <script>
-    // Variables de estado
-    let currentPanoId = "pano_1";
+    // =========================================================
+    // BASE DE DATOS LOCAL (IndexedDB)
+    // =========================================================
+    const DB_NAME = "DronePanoStudio_DB";
+    const DB_VERSION = 1;
+    let dbInstance = null;
+
+    function openDatabase() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains("projects")) {
+            db.createObjectStore("projects", { keyPath: "id" });
+          }
+        };
+        req.onsuccess = (e) => {
+          dbInstance = e.target.result;
+          resolve(dbInstance);
+        };
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    function getAllProjectsDB() {
+      return new Promise((resolve) => {
+        const tx = dbInstance.transaction("projects", "readonly");
+        const store = tx.objectStore("projects");
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      });
+    }
+
+    function saveProjectDB(project) {
+      return new Promise((resolve, reject) => {
+        const tx = dbInstance.transaction("projects", "readwrite");
+        const store = tx.objectStore("projects");
+        const req = store.put(project);
+        req.onsuccess = () => resolve();
+        req.onerror = (e) => reject(e);
+      });
+    }
+
+    function deleteProjectDB(id) {
+      return new Promise((resolve) => {
+        const tx = dbInstance.transaction("projects", "readwrite");
+        const store = tx.objectStore("projects");
+        store.delete(id);
+        tx.oncomplete = () => resolve();
+      });
+    }
+
+    // =========================================================
+    // ESTADO GLOBAL DE LA APLICACION
+    // =========================================================
+    let allProjects = [];
+    let currentProject = null;
+    let currentPanoId = null;
     let viewer = null;
     let map = null;
     let markers = {};
+    let flightPathPolyline = null;
     let radarPolygon = null;
     let autoRotateActive = false;
     let isSplitView = false;
-    let showOnlyNearby = false; // Estado del filtro de burbujas
+    let showOnlyNearby = false;
 
-    const nodes = window.DRONE_NODES || [];
+    // Archivos cargados en el modal creador
+    let stagedFiles = [];
 
-    // Funciones matematicas espaciales (Haversine & Bearing)
+    // =========================================================
+    // FUNCIONES MATEMATICAS ESPACIALES
+    // =========================================================
     function calcDistance(lat1, lon1, lat2, lon2) {
       const R = 6371000;
       const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -681,28 +1442,302 @@
       return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
-    // Funcion constructora personalizada de la burbuja HTML
+    // =========================================================
+    // INICIALIZACION Y GESTION DE PROYECTOS
+    // =========================================================
+    async function initPlatform() {
+      await openDatabase();
+
+      // Cargar proyectos de la BD
+      const dbProjects = await getAllProjectsDB();
+
+      // Proyecto por defecto precargado (las 9 fotos de Bucaramanga)
+      const defaultProject = {
+        id: "proj_vcl08_default",
+        title: "Inspección Dron VCL08 RTK",
+        desc: "Levantamiento aéreo de 9 posiciones con posicionamiento RTK centimétrico.",
+        date: "13 Oct 2026",
+        isDefault: true,
+        coverImage: "panos_web/pano_1.jpg",
+        nodes: window.DRONE_NODES || []
+      };
+
+      if (!dbProjects.some(p => p.id === defaultProject.id)) {
+        await saveProjectDB(defaultProject);
+        allProjects = [defaultProject, ...dbProjects];
+      } else {
+        allProjects = dbProjects;
+      }
+
+      renderProjectsGrid();
+    }
+
+    function renderProjectsGrid() {
+      const container = document.getElementById('projects-container');
+      container.innerHTML = '';
+
+      allProjects.forEach(proj => {
+        const card = document.createElement('div');
+        card.className = 'project-card';
+
+        const cover = proj.coverImage || (proj.nodes[0] ? proj.nodes[0].webFile : '');
+        const dateStr = proj.date || 'Reciente';
+
+        card.innerHTML = `
+          <div class="card-thumbnail" style="background-image: url('${cover}')">
+            <div class="card-badge ${proj.isDefault ? 'default-badge' : ''}">
+              ${proj.isDefault ? '⭐ Proyecto Principal' : '📁 Personalizado'}
+            </div>
+          </div>
+          <div class="card-body">
+            <h3 class="card-title">${proj.title}</h3>
+            <p class="card-desc">${proj.desc || 'Sin descripción'}</p>
+            <div class="card-meta">
+              <span>📸 ${proj.nodes.length} Panorámicas</span>
+              <span>📅 ${dateStr}</span>
+            </div>
+            <div class="card-actions">
+              <button class="btn-card-open" data-id="${proj.id}">
+                <span>🚀 Abrir Tour</span>
+              </button>
+              <button class="btn-card-share" data-id="${proj.id}" title="Exportar este proyecto en ZIP para compartir">
+                <span>📦 Exportar</span>
+              </button>
+              ${!proj.isDefault ? `<button class="btn-card-delete" data-id="${proj.id}" title="Eliminar proyecto">🗑️</button>` : ''}
+            </div>
+          </div>
+        `;
+
+        card.querySelector('.btn-card-open').addEventListener('click', () => {
+          openProjectViewer(proj.id);
+        });
+
+        card.querySelector('.btn-card-share').addEventListener('click', () => {
+          exportSingleProject(proj.id);
+        });
+
+        const btnDel = card.querySelector('.btn-card-delete');
+        if (btnDel) {
+          btnDel.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (confirm(`¿Estás seguro de eliminar el proyecto "${proj.title}"?`)) {
+              await deleteProjectDB(proj.id);
+              allProjects = allProjects.filter(p => p.id !== proj.id);
+              renderProjectsGrid();
+            }
+          });
+        }
+
+        container.appendChild(card);
+      });
+    }
+
+    // =========================================================
+    // CREAR NUEVO PROYECTO (DRAG & DROP + EXIF GPS)
+    // =========================================================
+    const modalCreate = document.getElementById('modal-create-project');
+    const dropzone = document.getElementById('dropzone-area');
+    const fileInput = document.getElementById('file-input');
+    const stagedList = document.getElementById('staged-photos-list');
+    const stagedContainer = document.getElementById('staged-photos-container');
+    const btnSaveProject = document.getElementById('btn-save-project');
+
+    document.getElementById('btn-open-create-modal').addEventListener('click', () => {
+      stagedFiles = [];
+      document.getElementById('project-name-input').value = '';
+      document.getElementById('project-desc-input').value = '';
+      stagedList.innerHTML = '';
+      stagedContainer.style.display = 'none';
+      btnSaveProject.disabled = true;
+      modalCreate.classList.add('active');
+    });
+
+    document.getElementById('btn-close-modal').addEventListener('click', () => {
+      modalCreate.classList.remove('active');
+    });
+    document.getElementById('btn-cancel-create').addEventListener('click', () => {
+      modalCreate.classList.remove('active');
+    });
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files) handleFilesUpload(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files) handleFilesUpload(e.target.files);
+    });
+
+    async function handleFilesUpload(files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file.type.match('image/jpeg')) continue;
+
+        let lat = null, lon = null, alt = 450, relAlt = 50, yaw = 0;
+
+        // Extraer GPS y XMP con exifr
+        try {
+          const exifData = await exifr.parse(file, { gps: true, xmp: true, tiff: true });
+          if (exifData) {
+            lat = exifData.latitude || exifData.GPSLatitude || null;
+            lon = exifData.longitude || exifData.GPSLongitude || null;
+            alt = exifData.GPSAltitude || exifData.AbsoluteAltitude || 450;
+            yaw = exifData.FlightYawDegree || exifData.GimbalYawDegree || 0;
+            relAlt = exifData.RelativeAltitude || 50;
+          }
+        } catch (err) {
+          console.warn("No se pudo leer EXIF en:", file.name, err);
+        }
+
+        // Si no tiene GPS, asignar coordenadas aproximadas consecutivas
+        if (lat === null || lon === null) {
+          lat = 7.08930 + (stagedFiles.length * 0.0005);
+          lon = -73.31920 + (stagedFiles.length * 0.0005);
+        }
+
+        const previewUrl = URL.createObjectURL(file);
+        const fileId = `pano_custom_${Date.now()}_${stagedFiles.length + 1}`;
+        const defaultTitle = `Punto #${stagedFiles.length + 1} - ${file.name.replace(/\.[^/.]+$/, "")}`;
+
+        stagedFiles.push({
+          id: fileId,
+          num: stagedFiles.length + 1,
+          title: defaultTitle,
+          file: file,
+          webFile: previewUrl,
+          lat: Number(lat),
+          lon: Number(lon),
+          alt: Math.round(Number(alt) * 10) / 10,
+          relAlt: Math.round(Number(relAlt) * 10) / 10,
+          yaw: Number(yaw)
+        });
+      }
+
+      renderStagedPhotos();
+    }
+
+    function renderStagedPhotos() {
+      stagedList.innerHTML = '';
+      if (stagedFiles.length > 0) {
+        stagedContainer.style.display = 'flex';
+        document.getElementById('staged-count').textContent = stagedFiles.length;
+        btnSaveProject.disabled = false;
+      } else {
+        stagedContainer.style.display = 'none';
+        btnSaveProject.disabled = true;
+      }
+
+      stagedFiles.forEach((item, idx) => {
+        const el = document.createElement('div');
+        el.className = 'staged-item';
+        el.innerHTML = `
+          <div class="staged-thumb" style="background-image: url('${item.webFile}')"></div>
+          <div class="staged-info">
+            <input type="text" class="staged-name-input" value="${item.title}" data-index="${idx}" />
+            <div class="staged-gps-tag">
+              <span>📍 Lat: ${item.lat.toFixed(5)}, Lon: ${item.lon.toFixed(5)}</span>
+              <span>⛰️ Alt: ${item.alt}m</span>
+            </div>
+          </div>
+          <button class="btn-remove-staged" data-index="${idx}" title="Eliminar foto">✕</button>
+        `;
+
+        el.querySelector('.staged-name-input').addEventListener('input', (e) => {
+          stagedFiles[idx].title = e.target.value;
+        });
+
+        el.querySelector('.btn-remove-staged').addEventListener('click', () => {
+          stagedFiles.splice(idx, 1);
+          renderStagedPhotos();
+        });
+
+        stagedList.appendChild(el);
+      });
+    }
+
+    btnSaveProject.addEventListener('click', async () => {
+      const name = document.getElementById('project-name-input').value.trim() || `Proyecto Dron ${new Date().toLocaleDateString()}`;
+      const desc = document.getElementById('project-desc-input').value.trim() || `Proyecto con ${stagedFiles.length} panorámicas 360°.`;
+
+      btnSaveProject.disabled = true;
+      btnSaveProject.querySelector('span').textContent = 'Guardando...';
+
+      const newProj = {
+        id: `proj_${Date.now()}`,
+        title: name,
+        desc: desc,
+        date: new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }),
+        isDefault: false,
+        coverImage: stagedFiles[0].webFile,
+        nodes: stagedFiles
+      };
+
+      await saveProjectDB(newProj);
+      allProjects.unshift(newProj);
+
+      modalCreate.classList.remove('active');
+      renderProjectsGrid();
+
+      // Abrir inmediatamente el nuevo proyecto en el visor
+      openProjectViewer(newProj.id);
+    });
+
+    // =========================================================
+    // CARGAR Y NAVEGAR UN PROYECTO EN EL VISOR 360°
+    // =========================================================
+    function openProjectViewer(projectId) {
+      const proj = allProjects.find(p => p.id === projectId);
+      if (!proj || proj.nodes.length === 0) return;
+
+      currentProject = proj;
+      currentPanoId = proj.nodes[0].id;
+
+      document.getElementById('dashboard-screen').classList.add('hidden');
+      document.getElementById('app-container').classList.remove('hidden');
+
+      document.getElementById('hud-project-title').textContent = `PROYECTO: ${proj.title}`;
+
+      // Iniciar el Visor 360° con los datos de este proyecto
+      initProjectPanorama(proj.nodes);
+      initProjectMap(proj.nodes);
+      initProjectCarousel(proj.nodes);
+      setActiveNode(currentPanoId, true);
+    }
+
+    // Boton Volver a Proyectos
+    document.getElementById('btn-back-to-dashboard').addEventListener('click', () => {
+      if (menuWrapper) menuWrapper.classList.remove('open');
+      if (viewer) {
+        try { viewer.destroy(); } catch(e){}
+        viewer = null;
+      }
+      if (map) {
+        try { map.remove(); } catch(e){}
+        map = null;
+      }
+      document.getElementById('app-container').classList.add('hidden');
+      document.getElementById('dashboard-screen').classList.remove('hidden');
+      currentProject = null;
+    });
+
+    // Constructor de la burbuja interactiva
     function createBubbleElement(hotSpotDiv, args) {
       const targetNode = args.targetNode;
       const dist = args.dist;
       const isNearby = args.isNearby;
 
-      // Limpiar hijos previos
       hotSpotDiv.innerHTML = '';
-
-      // Asegurar puntero y clases en el contenedor exterior
       hotSpotDiv.classList.add('bubble-hotspot');
       hotSpotDiv.classList.add('pnlm-pointer');
-      if (!isNearby) {
-        hotSpotDiv.classList.add('bubble-far');
-      }
+      if (!isNearby) hotSpotDiv.classList.add('bubble-far');
 
-      // Crear esfera visual interna
       const bubble = document.createElement('div');
       bubble.className = 'bubble-inner';
       bubble.style.backgroundImage = `url('${targetNode.webFile}')`;
 
-      // Etiqueta flotante inferior
       const distText = dist < 1.0 ? '0m' : `${Math.round(dist)}m`;
       const label = document.createElement('div');
       label.className = 'bubble-badge-label';
@@ -711,31 +1746,25 @@
 
       hotSpotDiv.appendChild(bubble);
 
-      // Evitar que mousedown inicie el arrastre de la camara en Pannellum
-      hotSpotDiv.onmousedown = function(e) {
-        e.stopPropagation();
-      };
-      hotSpotDiv.ontouchstart = function(e) {
-        e.stopPropagation();
-      };
+      hotSpotDiv.onmousedown = (e) => e.stopPropagation();
+      hotSpotDiv.ontouchstart = (e) => e.stopPropagation();
 
-      // Disparador directo de navegacion
-      hotSpotDiv.onclick = function(e) {
-        if (e) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
+      hotSpotDiv.onclick = (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
         switchPanorama(targetNode.id);
       };
 
-      // Tooltip informativo al pasar el cursor
       hotSpotDiv.title = `${targetNode.title}\nDistancia: ${distText}\nAltitud: ${targetNode.alt}m`;
     }
 
-    // 1. Inicializar Pannellum con TODAS las burbujas interconectadas
-    function initPanorama() {
+    // Inicializar Pannellum para el proyecto actual
+    function initProjectPanorama(nodes) {
+      if (viewer) {
+        try { viewer.destroy(); } catch(e){}
+      }
+
       const scenesConfig = {};
-      const NEARBY_THRESHOLD = 130; // metros para considerar "cercana"
+      const NEARBY_THRESHOLD = 130;
 
       nodes.forEach(originNode => {
         const hotSpots = [];
@@ -746,7 +1775,6 @@
             const brg = calcBearing(originNode.lat, originNode.lon, targetNode.lat, targetNode.lon);
             const dAlt = targetNode.alt - originNode.alt;
 
-            // Pitch en grados
             let pitch = 0;
             if (dist < 1.0) {
               pitch = dAlt >= 0 ? 80 : -80;
@@ -754,7 +1782,6 @@
               pitch = Math.atan2(dAlt, dist) * 180 / Math.PI;
             }
 
-            // Yaw relativo (-180 a 180)
             let relYaw = (brg - (originNode.yaw || 0) + 360) % 360;
             if (relYaw > 180) relYaw -= 360;
 
@@ -773,24 +1800,19 @@
                 isNearby: isNearby
               },
               clickHandlerFunc: function(e, args) {
-                if (e) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                }
+                if (e) { e.preventDefault(); e.stopPropagation(); }
                 switchPanorama(args.targetNode.id);
               },
-              clickHandlerArgs: {
-                targetNode: targetNode
-              }
+              clickHandlerArgs: { targetNode: targetNode }
             });
           }
         });
 
         scenesConfig[originNode.id] = {
           title: originNode.title,
-          hfov: 125,      // Vista gran angular tipo 0.5x por defecto
-          minHfov: 40,    // Permite acercar en detalle
-          maxHfov: 140,   // Permite alejar hasta 140 grados (super ultra-wide)
+          hfov: 125,
+          minHfov: 40,
+          maxHfov: 140,
           pitch: 0,
           yaw: 0,
           type: "equirectangular",
@@ -814,7 +1836,6 @@
         scenes: scenesConfig
       });
 
-      // Eventos de Pannellum
       viewer.on('load', () => {
         const sceneId = viewer.getScene();
         if (sceneId && sceneId !== currentPanoId) {
@@ -825,22 +1846,14 @@
       viewer.on('scenechange', (sceneId) => {
         setActiveNode(sceneId, false);
       });
-
-      // Bucle continuo para actualizar el Radar y la Brujula con la rotacion de camara
-      function updateHUD() {
-        if (viewer && map) {
-          const yaw = viewer.getYaw();
-          updateRadar(yaw);
-          updateCompass(yaw);
-        }
-        requestAnimationFrame(updateHUD);
-      }
-      requestAnimationFrame(updateHUD);
     }
 
-    // 2. Inicializar Mapa Leaflet
-    function initMap() {
-      if (nodes.length === 0) return;
+    // Inicializar Mapa Leaflet para el proyecto actual
+    function initProjectMap(nodes) {
+      if (map) {
+        try { map.remove(); } catch(e){}
+      }
+      markers = {};
 
       const firstNode = nodes[0];
       map = L.map('map', {
@@ -848,21 +1861,18 @@
         attributionControl: false
       }).setView([firstNode.lat, firstNode.lon], 18);
 
-      // Capa Satelital Esri World Imagery
       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19
       }).addTo(map);
 
-      // Dibujar linea de trayectoria de vuelo del dron
       const flightPath = nodes.map(n => [n.lat, n.lon]);
-      L.polyline(flightPath, {
+      flightPathPolyline = L.polyline(flightPath, {
         color: '#38bdf8',
         weight: 2,
         dashArray: '4, 6',
         opacity: 0.7
       }).addTo(map);
 
-      // Crear marcadores para cada toma
       nodes.forEach(node => {
         const el = document.createElement('div');
         el.className = 'custom-drone-marker' + (node.id === currentPanoId ? ' active' : '');
@@ -877,19 +1887,15 @@
         });
 
         const marker = L.marker([node.lat, node.lon], { icon: icon }).addTo(map);
-        marker.bindTooltip(`<b>${node.title}</b><br>Alt: ${node.alt}m (${node.relAlt}m rel)`, {
+        marker.bindTooltip(`<b>${node.title}</b><br>Alt: ${node.alt}m`, {
           direction: 'top',
           offset: [0, -16]
         });
 
-        marker.on('click', () => {
-          switchPanorama(node.id);
-        });
-
+        marker.on('click', () => switchPanorama(node.id));
         markers[node.id] = marker;
       });
 
-      // Poligono inicial de radar
       radarPolygon = L.polygon([], {
         color: '#38bdf8',
         weight: 1,
@@ -903,10 +1909,20 @@
       }
     }
 
-    // 3. Actualizar Radar (Cono de vision en el mapa)
+    // Radar dinámico y Brújula
+    function updateHUDLoop() {
+      if (viewer && map && currentProject) {
+        const yaw = viewer.getYaw();
+        updateRadar(yaw);
+        updateCompass(yaw);
+      }
+      requestAnimationFrame(updateHUDLoop);
+    }
+    requestAnimationFrame(updateHUDLoop);
+
     function updateRadar(yaw) {
-      if (!radarPolygon || !map) return;
-      const node = nodes.find(n => n.id === currentPanoId);
+      if (!radarPolygon || !map || !currentProject) return;
+      const node = currentProject.nodes.find(n => n.id === currentPanoId);
       if (!node) return;
 
       const originLat = node.lat;
@@ -918,32 +1934,24 @@
       const distanceMeters = 65;
 
       const points = [[originLat, originLon]];
-
       const steps = 10;
       const startAngle = centerAngle - (fov / 2);
-      const endAngle = centerAngle + (fov / 2);
 
       for (let i = 0; i <= steps; i++) {
         const angle = startAngle + (i / steps) * fov;
         const rad = angle * Math.PI / 180;
-
         const dLat = (distanceMeters * Math.cos(rad)) / 111111;
         const dLon = (distanceMeters * Math.sin(rad)) / (111111 * Math.cos(originLat * Math.PI / 180));
-
         points.push([originLat + dLat, originLon + dLon]);
       }
-
       radarPolygon.setLatLngs(points);
     }
 
-    // 4. Actualizar Brujula Superior
     function updateCompass(yaw) {
       const heading = (yaw + 360) % 360;
       const needle = document.getElementById('compass-icon');
       const text = document.getElementById('compass-heading');
-      if (needle) {
-        needle.style.transform = `rotate(${heading}deg)`;
-      }
+      if (needle) needle.style.transform = `rotate(${heading}deg)`;
       if (text) {
         const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
         const idx = Math.round(heading / 45) % 8;
@@ -951,44 +1959,36 @@
       }
     }
 
-    // 5. Cambiar a una nueva panoramica
     function switchPanorama(panoId) {
-      if (panoId === currentPanoId) return;
+      if (panoId === currentPanoId || !viewer) return;
       viewer.loadScene(panoId);
       setActiveNode(panoId, true);
     }
 
-    // 6. Sincronizar UI al cambiar de nodo
     function setActiveNode(panoId, panMap) {
       currentPanoId = panoId;
-      const node = nodes.find(n => n.id === panoId);
+      if (!currentProject) return;
+      const node = currentProject.nodes.find(n => n.id === panoId);
       if (!node) return;
 
-      // Actualizar HUD Telemetria
       document.getElementById('hud-name').textContent = node.title;
       document.getElementById('hud-lat').textContent = node.lat.toFixed(6);
       document.getElementById('hud-lon').textContent = node.lon.toFixed(6);
       document.getElementById('hud-alt').textContent = `${node.alt} m`;
-      document.getElementById('hud-relalt').textContent = `${node.relAlt} m`;
+      document.getElementById('hud-relalt').textContent = `${node.relAlt || '--'} m`;
 
-      // Actualizar Marcadores en Mapa
       Object.keys(markers).forEach(id => {
         const el = document.getElementById(`marker-${id}`);
         if (el) {
-          if (id === panoId) {
-            el.classList.add('active');
-          } else {
-            el.classList.remove('active');
-          }
+          if (id === panoId) el.classList.add('active');
+          else el.classList.remove('active');
         }
       });
 
-      // Centrar mapa suavemente
       if (map && panMap) {
         map.panTo([node.lat, node.lon], { animate: true, duration: 1.0 });
       }
 
-      // Actualizar Carrusel
       document.querySelectorAll('.pano-thumb-btn').forEach(btn => {
         if (btn.dataset.id === panoId) {
           btn.classList.add('active');
@@ -999,8 +1999,7 @@
       });
     }
 
-    // 7. Construir Carrusel Inferior
-    function initCarousel() {
+    function initProjectCarousel(nodes) {
       const bar = document.getElementById('carousel-bar');
       bar.innerHTML = '';
 
@@ -1011,52 +2010,154 @@
         btn.innerHTML = `
           <div class="thumb-num">${node.num}</div>
           <div class="thumb-meta">
-            <span class="name">Punto #${node.num}</span>
+            <span class="name">${node.title}</span>
             <span class="sub">Alt: ${node.alt}m</span>
           </div>
         `;
-
-        btn.addEventListener('click', () => {
-          switchPanorama(node.id);
-        });
-
+        btn.addEventListener('click', () => switchPanorama(node.id));
         bar.appendChild(btn);
       });
     }
 
-    // 8. Evento del Boton Filtro de Burbujas: Ver Todas vs Solo Cercanas
-    const btnToggleBubbles = document.getElementById('btn-toggle-bubbles');
-    const panoContainer = document.getElementById('panorama');
+    // =========================================================
+    // EXPORTADOR AISLADO DE UN SOLO PROYECTO (ZIP COMPARTIBLE)
+    // =========================================================
+    async function exportSingleProject(projectId) {
+      const proj = allProjects.find(p => p.id === projectId);
+      if (!proj) return;
 
-    btnToggleBubbles.addEventListener('click', function() {
+      const safeName = proj.title.replace(/[^a-zA-Z0-9_\-]/g, '_');
+      const zip = new JSZip();
+
+      // Carpeta de imagenes
+      const panosFolder = zip.folder("panos_web");
+
+      // Descargar o empaquetar imagenes
+      const nodesData = [];
+      for (let i = 0; i < proj.nodes.length; i++) {
+        const n = proj.nodes[i];
+        const filename = `pano_${n.num}.jpg`;
+
+        if (n.file) {
+          // Es un archivo Blob cargado por el usuario
+          panosFolder.file(filename, n.file);
+        } else {
+          // Es URL (proyecto por defecto)
+          try {
+            const resp = await fetch(n.webFile);
+            const blob = await resp.blob();
+            panosFolder.file(filename, blob);
+          } catch(e) {
+            console.error("Error descargando imagen para zip:", n.webFile, e);
+          }
+        }
+
+        nodesData.push({
+          id: n.id,
+          num: n.num,
+          title: n.title,
+          rawFile: filename,
+          webFile: `panos_web/${filename}`,
+          lat: n.lat,
+          lon: n.lon,
+          alt: n.alt,
+          relAlt: n.relAlt,
+          yaw: n.yaw
+        });
+      }
+
+      // Archivo panos_data.js exclusivo de este proyecto
+      const panosDataContent = `window.DRONE_NODES = ${JSON.stringify(nodesData, null, 2)};`;
+      zip.file("panos_data.js", panosDataContent);
+
+      // Descargar index.html para incluir en el paquete exportable
+      try {
+        let respHtml;
+        try {
+          respHtml = await fetch("index.html");
+        } catch(e) {
+          respHtml = await fetch("PAQUETE_WEB/index.html");
+        }
+        let htmlStr = await respHtml.text();
+        zip.file("index.html", htmlStr);
+      } catch(e) {
+        console.error("Error al obtener index.html para exportar:", e);
+      }
+
+      // Scripts para ver offline
+      const batContent = `@echo off\ntitle Visor 360 Dron - ${proj.title}\ncd /d "%~dp0"\npowershell -ExecutionPolicy Bypass -NoProfile -File "%~dp0server.ps1"\npause\n`;
+      zip.file("Iniciar_Visor_360.bat", batContent);
+
+      try {
+        const respServer = await fetch("server.ps1");
+        const serverStr = await respServer.text();
+        zip.file("server.ps1", serverStr);
+      } catch(e){}
+
+      // Generar ZIP y descargar
+      const blob = await zip.generateAsync({ type: "blob" });
+      saveAs(blob, `${safeName}_Visor360_Listo.zip`);
+    }
+
+    document.getElementById('btn-share-current-project').addEventListener('click', () => {
+      if (menuWrapper) menuWrapper.classList.remove('open');
+      if (currentProject) {
+        exportSingleProject(currentProject.id);
+      }
+    });
+
+    // =========================================================
+    // EVENTOS DE LA INTERFAZ DEL VISOR
+    // =========================================================
+    // Control del Menú Desplegable Superior Derecho (Hamburguesa ☰)
+    const menuWrapper = document.getElementById('hud-menu-wrapper');
+    const menuToggle = document.getElementById('btn-menu-toggle');
+    if (menuToggle && menuWrapper) {
+      menuToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menuWrapper.classList.toggle('open');
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!menuWrapper.contains(e.target)) {
+          menuWrapper.classList.remove('open');
+        }
+      });
+    }
+
+    document.getElementById('btn-toggle-bubbles').addEventListener('click', function() {
       showOnlyNearby = !showOnlyNearby;
+      const panoContainer = document.getElementById('panorama');
 
       if (showOnlyNearby) {
         panoContainer.classList.add('filter-nearby');
-        this.classList.add('nearby-mode');
+        this.classList.add('active');
         document.getElementById('btn-bubbles-icon').textContent = '📍';
         document.getElementById('btn-bubbles-text').textContent = 'Burbujas: Cercanas';
       } else {
         panoContainer.classList.remove('filter-nearby');
-        this.classList.remove('nearby-mode');
+        this.classList.remove('active');
         document.getElementById('btn-bubbles-icon').textContent = '🌐';
         document.getElementById('btn-bubbles-text').textContent = 'Burbujas: Todas';
       }
     });
 
-    // 9. Otros Eventos de la Interfaz
     const btnZoomUltra = document.getElementById('btn-zoom-ultra');
     btnZoomUltra.addEventListener('click', function() {
       if (viewer) {
         const cur = viewer.getHfov();
+        const zText = document.getElementById('btn-zoom-text');
+        const zIcon = document.getElementById('btn-zoom-icon');
         if (cur > 105) {
           viewer.setHfov(85);
           this.classList.remove('active');
-          this.querySelector('span').textContent = '🔎 1.0x';
+          if (zText) zText.textContent = 'Zoom Normal (1.0x)';
+          if (zIcon) zIcon.textContent = '🔎';
         } else {
           viewer.setHfov(125);
           this.classList.add('active');
-          this.querySelector('span').textContent = '🔍 0.5x';
+          if (zText) zText.textContent = 'Zoom Gran Angular (0.5x)';
+          if (zIcon) zIcon.textContent = '🔍';
         }
       }
     });
@@ -1064,10 +2165,11 @@
     document.getElementById('btn-toggle-autorotate').addEventListener('click', function() {
       autoRotateActive = !autoRotateActive;
       this.classList.toggle('active', autoRotateActive);
-      viewer.setAutoRotate(autoRotateActive ? -2 : 0);
+      if (viewer) viewer.setAutoRotate(autoRotateActive ? -2 : 0);
     });
 
     document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      if (menuWrapper) menuWrapper.classList.remove('open');
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(() => {});
       } else {
@@ -1097,15 +2199,13 @@
     });
 
     document.getElementById('btn-recenter-map').addEventListener('click', () => {
-      const node = nodes.find(n => n.id === currentPanoId);
-      if (node && map) {
-        map.flyTo([node.lat, node.lon], 18, { duration: 1.0 });
+      if (currentProject && map) {
+        const node = currentProject.nodes.find(n => n.id === currentPanoId);
+        if (node) map.flyTo([node.lat, node.lon], 18, { duration: 1.0 });
       }
     });
 
     const mapWrap = document.getElementById('map-wrapper');
-
-    // Clic en la burbuja minimizada para volver a desplegar el mapa
     mapWrap.addEventListener('click', (e) => {
       if (mapWrap.classList.contains('minimized')) {
         e.stopPropagation();
@@ -1124,12 +2224,9 @@
       setTimeout(() => { if (map) map.invalidateSize(); }, 350);
     });
 
-    // Iniciar Aplicacion al cargar
+    // Iniciar plataforma al cargar
     window.addEventListener('DOMContentLoaded', () => {
-      initPanorama();
-      initMap();
-      initCarousel();
-      setActiveNode(currentPanoId, true);
+      initPlatform();
     });
   </script>
 </body>
