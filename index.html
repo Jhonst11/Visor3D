@@ -45,6 +45,16 @@
       width: 100%;
       height: 100%;
       z-index: 1;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Reglas cuando el Modo Dividido esta activo (50% / 50% perfecto) */
+    #app-container.split-mode #panorama {
+      width: 50% !important;
+    }
+
+    #app-container.split-mode .carousel-bar {
+      max-width: calc(50% - 48px) !important;
     }
 
     /* Filter Class: oculta burbujas lejanas */
@@ -196,18 +206,22 @@
       overflow: hidden;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
       border: 2px solid rgba(255, 255, 255, 0.2);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), height 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.3s, border 0.3s;
     }
 
     #map-wrapper.split-view {
-      position: relative;
-      bottom: 0;
-      right: 0;
-      width: 45%;
-      height: 100%;
-      border-radius: 0;
-      border: none;
-      border-left: 2px solid rgba(255, 255, 255, 0.1);
+      position: absolute !important;
+      top: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      left: auto !important;
+      width: 50% !important;
+      height: 100% !important;
+      border-radius: 0 !important;
+      border: none !important;
+      border-left: 2px solid rgba(56, 189, 248, 0.3) !important;
+      box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5) !important;
+      z-index: 5 !important;
     }
 
     #map-wrapper.minimized {
@@ -1034,21 +1048,21 @@
 
     document.getElementById('btn-toggle-split').addEventListener('click', function() {
       isSplitView = !isSplitView;
+      const appContainer = document.getElementById('app-container');
       const mapWrap = document.getElementById('map-wrapper');
-      const panoEl = document.getElementById('panorama');
 
       this.classList.toggle('active', isSplitView);
       if (isSplitView) {
+        appContainer.classList.add('split-mode');
         mapWrap.classList.add('split-view');
         mapWrap.classList.remove('minimized');
-        panoEl.style.width = '55%';
       } else {
+        appContainer.classList.remove('split-mode');
         mapWrap.classList.remove('split-view');
-        panoEl.style.width = '100%';
       }
 
       setTimeout(() => {
-        map.invalidateSize();
+        if (map) map.invalidateSize();
         if (viewer) viewer.resize();
       }, 350);
     });
@@ -1061,9 +1075,13 @@
     });
 
     document.getElementById('btn-minimize-map').addEventListener('click', () => {
+      if (isSplitView) {
+        document.getElementById('btn-toggle-split').click();
+        return;
+      }
       const mapWrap = document.getElementById('map-wrapper');
       mapWrap.classList.toggle('minimized');
-      setTimeout(() => { map.invalidateSize(); }, 350);
+      setTimeout(() => { if (map) map.invalidateSize(); }, 350);
     });
 
     // Iniciar Aplicacion al cargar
