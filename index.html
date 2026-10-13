@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visor 360° Dron RTK - Geoposicionamiento Interactivo</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Pannellum CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css" />
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0b0f19;
+      color: #fff;
+    }
+
+    #app-container {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+    }
+
+    /* 360 Panorama Container */
+    #panorama {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    /* Filter Class: oculta burbujas lejanas */
+    #panorama.filter-nearby .bubble-far {
+      display: none !important;
+    }
+
+    /* Floating Top HUD */
+    .hud-top {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .glass-card {
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px;
+      padding: 12px 18px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      pointer-events: auto;
+    }
+
+    .hud-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .hud-title .dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    .hud-pano-name {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f8fafc;
+    }
+
+    .hud-telemetry {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .telemetry-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .telemetry-item span.label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #64748b;
+    }
+
+    .telemetry-item span.val {
+      font-weight: 600;
+      color: #e2e8f0;
+      font-feature-settings: "tnum";
+    }
+
+    /* Top Right Action Bar */
+    .hud-actions {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-action {
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      color: #e2e8f0;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    .btn-action:hover {
+      background: rgba(30, 41, 59, 0.95);
+      border-color: #38bdf8;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .btn-action.active {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #fff;
+    }
+
+    /* Estilo del Boton Selector de Burbujas */
+    .btn-filter-bubbles {
+      border: 1px solid #38bdf8;
+      background: rgba(2, 132, 199, 0.3);
+    }
+    .btn-filter-bubbles.nearby-mode {
+      border-color: #10b981;
+      background: rgba(16, 185, 129, 0.35);
+      color: #6ee7b7;
+    }
+
+    /* Satellite Map Widget */
+    #map-wrapper {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      width: 380px;
+      height: 280px;
+      z-index: 10;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    #map-wrapper.split-view {
+      position: relative;
+      bottom: 0;
+      right: 0;
+      width: 45%;
+      height: 100%;
+      border-radius: 0;
+      border: none;
+      border-left: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #map-wrapper.minimized {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    #map-wrapper.hidden {
+      display: none;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+      background: #111;
+    }
+
+    .map-header {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      z-index: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .map-badge {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: #38bdf8;
+      border: 1px solid rgba(255,255,255,0.1);
+      pointer-events: auto;
+    }
+
+    .map-controls-bar {
+      display: flex;
+      gap: 6px;
+      pointer-events: auto;
+    }
+
+    .map-control-btn {
+      width: 28px;
+      height: 28px;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      color: #e2e8f0;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      transition: background 0.2s;
+    }
+
+    .map-control-btn:hover {
+      background: #0284c7;
+      color: #fff;
+    }
+
+    /* Bottom Carousel Quick Selector */
+    .carousel-bar {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+      background: rgba(15, 23, 42, 0.78);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 10px;
+      max-width: calc(100% - 440px);
+      overflow-x: auto;
+      scrollbar-width: thin;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      transition: all 0.3s ease;
+    }
+
+    .carousel-bar::-webkit-scrollbar {
+      height: 4px;
+    }
+    .carousel-bar::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.2);
+      border-radius: 4px;
+    }
+
+    .pano-thumb-btn {
+      flex: 0 0 auto;
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #cbd5e1;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+
+    .pano-thumb-btn:hover {
+      background: rgba(51, 65, 85, 0.9);
+      border-color: #38bdf8;
+      color: #fff;
+      transform: translateY(-2px);
+    }
+
+    .pano-thumb-btn.active {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #fff;
+      box-shadow: 0 0 16px rgba(2, 132, 199, 0.6);
+    }
+
+    .thumb-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    .pano-thumb-btn.active .thumb-num {
+      background: #fff;
+      color: #0284c7;
+    }
+
+    .thumb-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      line-height: 1.2;
+    }
+
+    .thumb-meta span.name {
+      font-weight: 600;
+    }
+
+    .thumb-meta span.sub {
+      font-size: 10px;
+      opacity: 0.7;
+    }
+
+    /* Custom Leaflet Markers */
+    .custom-drone-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      background: #0284c7;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 50%;
+      border: 2px solid #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+      transition: transform 0.2s, background 0.2s;
+      cursor: pointer;
+    }
+
+    .custom-drone-marker:hover {
+      transform: scale(1.25);
+      background: #38bdf8;
+    }
+
+    .custom-drone-marker.active {
+      background: #10b981;
+      border-color: #ffffff;
+      box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.4), 0 4px 16px rgba(0,0,0,0.8);
+      transform: scale(1.15);
+      animation: pulse-marker 1.8s infinite;
+    }
+
+    @keyframes pulse-marker {
+      0%, 100% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.4), 0 4px 16px rgba(0,0,0,0.8); }
+      50% { box-shadow: 0 0 0 12px rgba(16, 185, 129, 0.15), 0 4px 20px rgba(0,0,0,0.8); }
+    }
+
+    /* ========================================================
+       BURBUJAS 360 INTERACTIVAS (HOTSPOTS FLOTANTES TIPO KUULA)
+       ======================================================== */
+    /* Contenedor del hotspot en Pannellum (mantiene las coordenadas 3D intactas) */
+    .pnlm-hotspot-base.bubble-hotspot {
+      width: 56px !important;
+      height: 56px !important;
+      margin: 0 !important;
+      cursor: pointer !important;
+      pointer-events: auto !important;
+      z-index: 50 !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      display: block !important;
+    }
+
+    .pnlm-hotspot-base.bubble-hotspot.bubble-far {
+      width: 44px !important;
+      height: 44px !important;
+    }
+
+    /* Esfera visual interna (animacion de escala y hover aislada aqui) */
+    .bubble-inner {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 3px solid #38bdf8;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      box-shadow: 0 0 20px rgba(56, 189, 248, 0.8), 0 6px 20px rgba(0,0,0,0.9);
+      cursor: pointer;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), border-color 0.2s, box-shadow 0.2s;
+      position: relative;
+    }
+
+    .bubble-far .bubble-inner {
+      opacity: 0.85;
+      border-color: #60a5fa;
+    }
+
+    /* Efecto al pasar el cursor (Hover) en la burbuja interna */
+    .bubble-inner:hover {
+      transform: scale(1.3) translateY(-2px);
+      border-color: #10b981;
+      box-shadow: 0 0 32px rgba(16, 185, 129, 1), 0 8px 30px rgba(0,0,0,1);
+      opacity: 1;
+    }
+
+    /* Etiqueta flotante inferior pegada a la burbuja */
+    .bubble-badge-label {
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 12px;
+      white-space: nowrap;
+      pointer-events: none;
+      transform: translateY(18px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .bubble-badge-label .num-tag {
+      color: #38bdf8;
+    }
+
+    .bubble-badge-label .dist-tag {
+      color: #cbd5e1;
+      font-size: 9px;
+      opacity: 0.85;
+    }
+
+    /* Compass Rose Indicator */
+    .compass-hud {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      pointer-events: none;
+    }
+
+    .compass-needle {
+      width: 14px;
+      height: 14px;
+      display: inline-block;
+      transition: transform 0.1s linear;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="app-container">
+    <!-- Visor 360 Pannellum -->
+    <div id="panorama"></div>
+
+    <!-- HUD Telemetria Superior Izquierda -->
+    <div class="hud-top">
+      <div class="glass-card">
+        <div class="hud-title">
+          <span class="dot"></span>
+          <span>Inspección Aérea RTK • Dron 360°</span>
+        </div>
+        <div class="hud-pano-name" id="hud-name">Punto Dron #1</div>
+        <div class="hud-telemetry">
+          <div class="telemetry-item">
+            <span class="label">Latitud</span>
+            <span class="val" id="hud-lat">--</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="label">Longitud</span>
+            <span class="val" id="hud-lon">--</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="label">Altitud MSL</span>
+            <span class="val" id="hud-alt">-- m</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="label">Alt. Vuelo (Rel)</span>
+            <span class="val" id="hud-relalt">-- m</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rosa de los vientos / Brújula Superior Central -->
+    <div class="compass-hud">
+      <svg class="compass-needle" id="compass-icon" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L15 11L12 9L9 11L12 2Z" fill="#ef4444"/>
+        <path d="M12 22L15 13L12 15L9 13L12 22Z" fill="#94a3b8"/>
+      </svg>
+      <span id="compass-heading">0° N</span>
+    </div>
+
+    <!-- Botones de Accion Superior Derecha -->
+    <div class="hud-actions">
+      <!-- BOTON PARA ALTERNAR BURBUJAS: TODAS VS SOLO CERCANAS -->
+      <button class="btn-action btn-filter-bubbles" id="btn-toggle-bubbles" title="Alternar visibilidad de burbujas">
+        <span id="btn-bubbles-icon">🌐</span>
+        <span id="btn-bubbles-text">Burbujas: Todas</span>
+      </button>
+
+      <!-- Boton de Zoom Gran Angular 0.5x -->
+      <button class="btn-action active" id="btn-zoom-ultra" title="Alejar visión a Gran Angular 0.5x">
+        <span>🔍 0.5x</span>
+      </button>
+
+      <button class="btn-action" id="btn-toggle-autorotate" title="Activar/Desactivar Rotación Automática">
+        <span>🔄 Giro Auto</span>
+      </button>
+      <button class="btn-action" id="btn-toggle-split" title="Alternar Modo Dividido">
+        <span>◫ Dividir Vista</span>
+      </button>
+      <button class="btn-action" id="btn-fullscreen" title="Pantalla Completa">
+        <span>⛶ Pantalla Completa</span>
+      </button>
+    </div>
+
+    <!-- Mini-Mapa Satelital Leaflet -->
+    <div id="map-wrapper">
+      <div class="map-header">
+        <div class="map-badge">🛰️ VISTA SATELITAL RTK</div>
+        <div class="map-controls-bar">
+          <button class="map-control-btn" id="btn-recenter-map" title="Centrar en foto activa">🎯</button>
+          <button class="map-control-btn" id="btn-minimize-map" title="Minimizar mapa">_</button>
+        </div>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <!-- Carrusel Inferior de Seleccion Rapida -->
+    <div class="carousel-bar" id="carousel-bar"></div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+  <script src="panos_data.js"></script>
+
+  <script>
+    // Variables de estado
+    let currentPanoId = "pano_1";
+    let viewer = null;
+    let map = null;
+    let markers = {};
+    let radarPolygon = null;
+    let autoRotateActive = false;
+    let isSplitView = false;
+    let showOnlyNearby = false; // Estado del filtro de burbujas
+
+    const nodes = window.DRONE_NODES || [];
+
+    // Funciones matematicas espaciales (Haversine & Bearing)
+    function calcDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function calcBearing(lat1, lon1, lat2, lon2) {
+      const phi1 = lat1 * Math.PI / 180;
+      const phi2 = lat2 * Math.PI / 180;
+      const dLam = (lon2 - lon1) * Math.PI / 180;
+      const y = Math.sin(dLam) * Math.cos(phi2);
+      const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLam);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+
+    // Funcion constructora personalizada de la burbuja HTML
+    function createBubbleElement(hotSpotDiv, args) {
+      const targetNode = args.targetNode;
+      const dist = args.dist;
+      const isNearby = args.isNearby;
+
+      // Limpiar hijos previos
+      hotSpotDiv.innerHTML = '';
+
+      // Asegurar puntero y clases en el contenedor exterior
+      hotSpotDiv.classList.add('bubble-hotspot');
+      hotSpotDiv.classList.add('pnlm-pointer');
+      if (!isNearby) {
+        hotSpotDiv.classList.add('bubble-far');
+      }
+
+      // Crear esfera visual interna
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble-inner';
+      bubble.style.backgroundImage = `url('${targetNode.webFile}')`;
+
+      // Etiqueta flotante inferior
+      const distText = dist < 1.0 ? '0m' : `${Math.round(dist)}m`;
+      const label = document.createElement('div');
+      label.className = 'bubble-badge-label';
+      label.innerHTML = `<span class="num-tag">#${targetNode.num}</span><span class="dist-tag">(${distText})</span>`;
+      bubble.appendChild(label);
+
+      hotSpotDiv.appendChild(bubble);
+
+      // Evitar que mousedown inicie el arrastre de la camara en Pannellum
+      hotSpotDiv.onmousedown = function(e) {
+        e.stopPropagation();
+      };
+      hotSpotDiv.ontouchstart = function(e) {
+        e.stopPropagation();
+      };
+
+      // Disparador directo de navegacion
+      hotSpotDiv.onclick = function(e) {
+        if (e) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        switchPanorama(targetNode.id);
+      };
+
+      // Tooltip informativo al pasar el cursor
+      hotSpotDiv.title = `${targetNode.title}\nDistancia: ${distText}\nAltitud: ${targetNode.alt}m`;
+    }
+
+    // 1. Inicializar Pannellum con TODAS las burbujas interconectadas
+    function initPanorama() {
+      const scenesConfig = {};
+      const NEARBY_THRESHOLD = 130; // metros para considerar "cercana"
+
+      nodes.forEach(originNode => {
+        const hotSpots = [];
+
+        nodes.forEach(targetNode => {
+          if (originNode.id !== targetNode.id) {
+            const dist = calcDistance(originNode.lat, originNode.lon, targetNode.lat, targetNode.lon);
+            const brg = calcBearing(originNode.lat, originNode.lon, targetNode.lat, targetNode.lon);
+            const dAlt = targetNode.alt - originNode.alt;
+
+            // Pitch en grados
+            let pitch = 0;
+            if (dist < 1.0) {
+              pitch = dAlt >= 0 ? 80 : -80;
+            } else {
+              pitch = Math.atan2(dAlt, dist) * 180 / Math.PI;
+            }
+
+            // Yaw relativo (-180 a 180)
+            let relYaw = (brg - (originNode.yaw || 0) + 360) % 360;
+            if (relYaw > 180) relYaw -= 360;
+
+            const isNearby = dist <= NEARBY_THRESHOLD;
+
+            hotSpots.push({
+              pitch: pitch,
+              yaw: relYaw,
+              type: "scene",
+              sceneId: targetNode.id,
+              cssClass: "bubble-hotspot" + (isNearby ? "" : " bubble-far"),
+              createTooltipFunc: createBubbleElement,
+              createTooltipArgs: {
+                targetNode: targetNode,
+                dist: dist,
+                isNearby: isNearby
+              },
+              clickHandlerFunc: function(e, args) {
+                if (e) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+                switchPanorama(args.targetNode.id);
+              },
+              clickHandlerArgs: {
+                targetNode: targetNode
+              }
+            });
+          }
+        });
+
+        scenesConfig[originNode.id] = {
+          title: originNode.title,
+          hfov: 125,      // Vista gran angular tipo 0.5x por defecto
+          minHfov: 40,    // Permite acercar en detalle
+          maxHfov: 140,   // Permite alejar hasta 140 grados (super ultra-wide)
+          pitch: 0,
+          yaw: 0,
+          type: "equirectangular",
+          panorama: originNode.webFile,
+          autoLoad: true,
+          hotSpots: hotSpots
+        };
+      });
+
+      viewer = pannellum.viewer('panorama', {
+        default: {
+          firstScene: currentPanoId,
+          sceneFadeDuration: 1000,
+          autoLoad: true,
+          showControls: false,
+          compass: false,
+          hfov: 125,
+          minHfov: 40,
+          maxHfov: 140
+        },
+        scenes: scenesConfig
+      });
+
+      // Eventos de Pannellum
+      viewer.on('load', () => {
+        const sceneId = viewer.getScene();
+        if (sceneId && sceneId !== currentPanoId) {
+          setActiveNode(sceneId, false);
+        }
+      });
+
+      viewer.on('scenechange', (sceneId) => {
+        setActiveNode(sceneId, false);
+      });
+
+      // Bucle continuo para actualizar el Radar y la Brujula con la rotacion de camara
+      function updateHUD() {
+        if (viewer && map) {
+          const yaw = viewer.getYaw();
+          updateRadar(yaw);
+          updateCompass(yaw);
+        }
+        requestAnimationFrame(updateHUD);
+      }
+      requestAnimationFrame(updateHUD);
+    }
+
+    // 2. Inicializar Mapa Leaflet
+    function initMap() {
+      if (nodes.length === 0) return;
+
+      const firstNode = nodes[0];
+      map = L.map('map', {
+        zoomControl: false,
+        attributionControl: false
+      }).setView([firstNode.lat, firstNode.lon], 18);
+
+      // Capa Satelital Esri World Imagery
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19
+      }).addTo(map);
+
+      // Dibujar linea de trayectoria de vuelo del dron
+      const flightPath = nodes.map(n => [n.lat, n.lon]);
+      L.polyline(flightPath, {
+        color: '#38bdf8',
+        weight: 2,
+        dashArray: '4, 6',
+        opacity: 0.7
+      }).addTo(map);
+
+      // Crear marcadores para cada toma
+      nodes.forEach(node => {
+        const el = document.createElement('div');
+        el.className = 'custom-drone-marker' + (node.id === currentPanoId ? ' active' : '');
+        el.id = `marker-${node.id}`;
+        el.innerHTML = node.num;
+
+        const icon = L.divIcon({
+          html: el,
+          className: '',
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const marker = L.marker([node.lat, node.lon], { icon: icon }).addTo(map);
+        marker.bindTooltip(`<b>${node.title}</b><br>Alt: ${node.alt}m (${node.relAlt}m rel)`, {
+          direction: 'top',
+          offset: [0, -16]
+        });
+
+        marker.on('click', () => {
+          switchPanorama(node.id);
+        });
+
+        markers[node.id] = marker;
+      });
+
+      // Poligono inicial de radar
+      radarPolygon = L.polygon([], {
+        color: '#38bdf8',
+        weight: 1,
+        fillColor: '#38bdf8',
+        fillOpacity: 0.35
+      }).addTo(map);
+
+      if (nodes.length > 1) {
+        const bounds = L.latLngBounds(nodes.map(n => [n.lat, n.lon]));
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+      }
+    }
+
+    // 3. Actualizar Radar (Cono de vision en el mapa)
+    function updateRadar(yaw) {
+      if (!radarPolygon || !map) return;
+      const node = nodes.find(n => n.id === currentPanoId);
+      if (!node) return;
+
+      const originLat = node.lat;
+      const originLon = node.lon;
+
+      const centerAngle = (yaw + (node.yaw || 0) + 360) % 360;
+      const curHfov = viewer ? viewer.getHfov() : 125;
+      const fov = Math.min(100, Math.max(45, curHfov * 0.65));
+      const distanceMeters = 65;
+
+      const points = [[originLat, originLon]];
+
+      const steps = 10;
+      const startAngle = centerAngle - (fov / 2);
+      const endAngle = centerAngle + (fov / 2);
+
+      for (let i = 0; i <= steps; i++) {
+        const angle = startAngle + (i / steps) * fov;
+        const rad = angle * Math.PI / 180;
+
+        const dLat = (distanceMeters * Math.cos(rad)) / 111111;
+        const dLon = (distanceMeters * Math.sin(rad)) / (111111 * Math.cos(originLat * Math.PI / 180));
+
+        points.push([originLat + dLat, originLon + dLon]);
+      }
+
+      radarPolygon.setLatLngs(points);
+    }
+
+    // 4. Actualizar Brujula Superior
+    function updateCompass(yaw) {
+      const heading = (yaw + 360) % 360;
+      const needle = document.getElementById('compass-icon');
+      const text = document.getElementById('compass-heading');
+      if (needle) {
+        needle.style.transform = `rotate(${heading}deg)`;
+      }
+      if (text) {
+        const directions = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+        const idx = Math.round(heading / 45) % 8;
+        text.textContent = `${Math.round(heading)}° ${directions[idx]}`;
+      }
+    }
+
+    // 5. Cambiar a una nueva panoramica
+    function switchPanorama(panoId) {
+      if (panoId === currentPanoId) return;
+      viewer.loadScene(panoId);
+      setActiveNode(panoId, true);
+    }
+
+    // 6. Sincronizar UI al cambiar de nodo
+    function setActiveNode(panoId, panMap) {
+      currentPanoId = panoId;
+      const node = nodes.find(n => n.id === panoId);
+      if (!node) return;
+
+      // Actualizar HUD Telemetria
+      document.getElementById('hud-name').textContent = node.title;
+      document.getElementById('hud-lat').textContent = node.lat.toFixed(6);
+      document.getElementById('hud-lon').textContent = node.lon.toFixed(6);
+      document.getElementById('hud-alt').textContent = `${node.alt} m`;
+      document.getElementById('hud-relalt').textContent = `${node.relAlt} m`;
+
+      // Actualizar Marcadores en Mapa
+      Object.keys(markers).forEach(id => {
+        const el = document.getElementById(`marker-${id}`);
+        if (el) {
+          if (id === panoId) {
+            el.classList.add('active');
+          } else {
+            el.classList.remove('active');
+          }
+        }
+      });
+
+      // Centrar mapa suavemente
+      if (map && panMap) {
+        map.panTo([node.lat, node.lon], { animate: true, duration: 1.0 });
+      }
+
+      // Actualizar Carrusel
+      document.querySelectorAll('.pano-thumb-btn').forEach(btn => {
+        if (btn.dataset.id === panoId) {
+          btn.classList.add('active');
+          btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+    }
+
+    // 7. Construir Carrusel Inferior
+    function initCarousel() {
+      const bar = document.getElementById('carousel-bar');
+      bar.innerHTML = '';
+
+      nodes.forEach(node => {
+        const btn = document.createElement('button');
+        btn.className = 'pano-thumb-btn' + (node.id === currentPanoId ? ' active' : '');
+        btn.dataset.id = node.id;
+        btn.innerHTML = `
+          <div class="thumb-num">${node.num}</div>
+          <div class="thumb-meta">
+            <span class="name">Punto #${node.num}</span>
+            <span class="sub">Alt: ${node.alt}m</span>
+          </div>
+        `;
+
+        btn.addEventListener('click', () => {
+          switchPanorama(node.id);
+        });
+
+        bar.appendChild(btn);
+      });
+    }
+
+    // 8. Evento del Boton Filtro de Burbujas: Ver Todas vs Solo Cercanas
+    const btnToggleBubbles = document.getElementById('btn-toggle-bubbles');
+    const panoContainer = document.getElementById('panorama');
+
+    btnToggleBubbles.addEventListener('click', function() {
+      showOnlyNearby = !showOnlyNearby;
+
+      if (showOnlyNearby) {
+        panoContainer.classList.add('filter-nearby');
+        this.classList.add('nearby-mode');
+        document.getElementById('btn-bubbles-icon').textContent = '📍';
+        document.getElementById('btn-bubbles-text').textContent = 'Burbujas: Cercanas';
+      } else {
+        panoContainer.classList.remove('filter-nearby');
+        this.classList.remove('nearby-mode');
+        document.getElementById('btn-bubbles-icon').textContent = '🌐';
+        document.getElementById('btn-bubbles-text').textContent = 'Burbujas: Todas';
+      }
+    });
+
+    // 9. Otros Eventos de la Interfaz
+    const btnZoomUltra = document.getElementById('btn-zoom-ultra');
+    btnZoomUltra.addEventListener('click', function() {
+      if (viewer) {
+        const cur = viewer.getHfov();
+        if (cur > 105) {
+          viewer.setHfov(85);
+          this.classList.remove('active');
+          this.querySelector('span').textContent = '🔎 1.0x';
+        } else {
+          viewer.setHfov(125);
+          this.classList.add('active');
+          this.querySelector('span').textContent = '🔍 0.5x';
+        }
+      }
+    });
+
+    document.getElementById('btn-toggle-autorotate').addEventListener('click', function() {
+      autoRotateActive = !autoRotateActive;
+      this.classList.toggle('active', autoRotateActive);
+      viewer.setAutoRotate(autoRotateActive ? -2 : 0);
+    });
+
+    document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    });
+
+    document.getElementById('btn-toggle-split').addEventListener('click', function() {
+      isSplitView = !isSplitView;
+      const mapWrap = document.getElementById('map-wrapper');
+      const panoEl = document.getElementById('panorama');
+
+      this.classList.toggle('active', isSplitView);
+      if (isSplitView) {
+        mapWrap.classList.add('split-view');
+        mapWrap.classList.remove('minimized');
+        panoEl.style.width = '55%';
+      } else {
+        mapWrap.classList.remove('split-view');
+        panoEl.style.width = '100%';
+      }
+
+      setTimeout(() => {
+        map.invalidateSize();
+        if (viewer) viewer.resize();
+      }, 350);
+    });
+
+    document.getElementById('btn-recenter-map').addEventListener('click', () => {
+      const node = nodes.find(n => n.id === currentPanoId);
+      if (node && map) {
+        map.flyTo([node.lat, node.lon], 18, { duration: 1.0 });
+      }
+    });
+
+    document.getElementById('btn-minimize-map').addEventListener('click', () => {
+      const mapWrap = document.getElementById('map-wrapper');
+      mapWrap.classList.toggle('minimized');
+      setTimeout(() => { map.invalidateSize(); }, 350);
+    });
+
+    // Iniciar Aplicacion al cargar
+    window.addEventListener('DOMContentLoaded', () => {
+      initPanorama();
+      initMap();
+      initCarousel();
+      setActiveNode(currentPanoId, true);
+    });
+  </script>
+</body>
+</html>
